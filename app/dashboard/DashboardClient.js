@@ -1,6 +1,5 @@
 'use client'
 import { useState } from 'react'
-import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 
 // ── Icons (inline SVG to avoid import issues) ──────────────────────────────
@@ -75,26 +74,28 @@ function Pill({ children, color = 'default' }) {
 export default function DashboardClient({ profile, initialSavedIdeas }) {
   const [tab, setTab]             = useState('creator')
   const [savedIdeas, setSavedIdeas] = useState(initialSavedIdeas)
-  const supabase = createClient()
-  const router   = useRouter()
+  const router = useRouter()
 
   async function saveIdea(idea) {
-    const { data: { user } } = await supabase.auth.getUser()
-    const { data, error } = await supabase.from('saved_ideas').insert({
-      user_id: user.id,
-      ...idea,
-    }).select().single()
-    if (!error) setSavedIdeas(prev => [data, ...prev])
+    const res = await fetch('/api/ideas', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(idea),
+    })
+    if (res.ok) {
+      const { idea: saved } = await res.json()
+      setSavedIdeas(prev => [saved, ...prev])
+    }
   }
 
   async function deleteIdea(id) {
-    await supabase.from('saved_ideas').delete().eq('id', id)
-    setSavedIdeas(prev => prev.filter(i => i.id !== id))
+    const res = await fetch(`/api/ideas/${id}`, { method: 'DELETE' })
+    if (res.ok) setSavedIdeas(prev => prev.filter(i => i.id !== id))
   }
 
   async function signOut() {
-    await supabase.auth.signOut()
-    router.push('/')
+    await fetch('/api/auth/signout', { method: 'POST' })
+    window.location.assign('/')
   }
 
   const TABS = [

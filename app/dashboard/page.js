@@ -1,19 +1,37 @@
-import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
+import { prisma } from '@/lib/db'
+import { getSession } from '@/lib/auth'
 import DashboardClient from './DashboardClient'
 
 export default async function DashboardPage() {
-  const supabase = createClient()
+  const session = await getSession()
+  if (!session) redirect('/')
 
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/')
-
-  const [{ data: profile }, { data: savedIdeas }] = await Promise.all([
-    supabase.from('profiles').select('*').eq('id', user.id).single(),
-    supabase.from('saved_ideas').select('*').eq('user_id', user.id).order('created_at', { ascending: false }),
+  const [user, savedIdeas] = await Promise.all([
+    prisma.user.findUnique({
+      where: { id: session.sub },
+      include: { profile: true },
+    }),
+    prisma.savedIdea.findMany({
+      where: { userId: session.sub },
+      orderBy: { createdAt: 'desc' },
+    }),
   ])
 
-  if (!profile?.onboarding_complete) redirect('/onboarding')
+  if (!user) redirect('/')
+  if (!user.profile?.onboardingComplete) redirect('/onboarding')
 
-  return <DashboardClient profile={profile} initialSavedIdeas={savedIdeas || []} />
+  const profile = {
+    ...user.profile,
+    email: user.email,
+    content_formats: user.profile.contentFormats,
+    favourite_creators: user.profile.favouriteCreators,
+    target_audience: user.profile.targetAudience,
+    audience_pain_points: user.profile.audiencePainPoints,
+    unique_angle: user.profile.uniqueAngle,
+    past_content: user.profile.pastContent,
+    onboarding_complete: user.profile.onboardingComplete,
+  }
+
+  return <DashboardClient profile={profile} initialSavedIdeas={savedIdeas} />
 }

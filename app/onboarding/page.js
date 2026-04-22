@@ -1,7 +1,5 @@
 'use client'
 import { useState } from 'react'
-import { createClient } from '@/lib/supabase/client'
-import { useRouter } from 'next/navigation'
 
 const STEPS = [
   { num: 1, title: 'The Basics',         sub: 'Who are you?' },
@@ -41,9 +39,6 @@ export default function OnboardingPage() {
     past_content: '',
     favourite_creators: [],
   })
-  const supabase = createClient()
-  const router   = useRouter()
-
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
   const toggleFmt = f => set('content_formats',
     form.content_formats.includes(f)
@@ -65,16 +60,17 @@ export default function OnboardingPage() {
 
   async function finish() {
     setSaving(true)
-    const { data: { user } } = await supabase.auth.getUser()
-    const { error } = await supabase.from('profiles').upsert({
-      id: user.id,
-      email: user.email,
-      ...form,
-      onboarding_complete: true,
-      updated_at: new Date().toISOString(),
+    const res = await fetch('/api/profile', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...form, onboarding_complete: true }),
     })
-    if (!error) router.push('/dashboard')
-    else { alert('Error saving. Please try again.'); setSaving(false) }
+    if (res.ok) {
+      window.location.assign('/dashboard')
+    } else {
+      alert('Error saving. Please try again.')
+      setSaving(false)
+    }
   }
 
   return (

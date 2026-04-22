@@ -1,15 +1,13 @@
 'use client'
 import { useState } from 'react'
-import { createClient } from '@/lib/supabase/client'
 
 export default function AuthPage() {
-  const [mode, setMode]         = useState('signin') // 'signin' | 'signup'
+  const [mode, setMode]         = useState('signin')
   const [email, setEmail]       = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading]   = useState(false)
   const [error, setError]       = useState('')
   const [notice, setNotice]     = useState('')
-  const supabase = createClient()
 
   const switchMode = (next) => {
     setMode(next)
@@ -17,88 +15,49 @@ export default function AuthPage() {
     setNotice('')
   }
 
-  async function handleSignIn() {
+  async function submit() {
     if (!email || !password) {
       setError('Email and password are required.')
       return
     }
-    setLoading(true); setError(''); setNotice('')
-
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password })
-
-    if (error) {
-      // Supabase returns the same "Invalid login credentials" for both a missing
-      // account and a wrong password — we can't distinguish, so guide the user.
-      const msg = (error.message || '').toLowerCase()
-      if (msg.includes('invalid login') || msg.includes('invalid credentials')) {
-        setError("We couldn't sign you in. If you don't have an account yet, please sign up.")
-      } else if (msg.includes('email not confirmed')) {
-        setError('Your email is not confirmed yet. Check your inbox for the confirmation email.')
-      } else {
-        setError(error.message)
-      }
-      setLoading(false)
-      return
-    }
-
-    if (data?.session) {
-      await redirectAfterAuth(data.user.id)
-      return
-    }
-
-    setError('Sign-in failed. Please try again.')
-    setLoading(false)
-  }
-
-  async function redirectAfterAuth(userId) {
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('onboarding_complete')
-      .eq('id', userId)
-      .single()
-    // Hard navigation so middleware sees the freshly written auth cookies.
-    window.location.assign(profile?.onboarding_complete ? '/dashboard' : '/onboarding')
-  }
-
-  async function handleSignUp() {
-    if (!email || !password) {
-      setError('Email and password are required.')
-      return
-    }
-    if (password.length < 6) {
+    if (mode === 'signup' && password.length < 6) {
       setError('Password must be at least 6 characters.')
       return
     }
+
     setLoading(true); setError(''); setNotice('')
 
-    const { data, error } = await supabase.auth.signUp({ email, password })
+    try {
+      const res = await fetch(`/api/auth/${mode === 'signin' ? 'signin' : 'signup'}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      })
+      const data = await res.json().catch(() => ({}))
 
-    if (error) {
-      const msg = (error.message || '').toLowerCase()
-      if (msg.includes('already registered') || msg.includes('already been registered') || msg.includes('user already')) {
-        setError('An account with this email already exists. Please sign in instead.')
-      } else {
-        setError(error.message)
+      if (!res.ok) {
+        if (data.code === 'NO_ACCOUNT') {
+          setError(data.error)
+          setNotice('Switching you to sign-up…')
+          setMode('signup')
+        } else if (data.code === 'ACCOUNT_EXISTS') {
+          setError(data.error)
+          setNotice('Switching you to sign-in…')
+          setMode('signin')
+        } else {
+          setError(data.error || `${mode === 'signin' ? 'Sign-in' : 'Sign-up'} failed.`)
+        }
+        return
       }
+
+      // Hard navigation so the newly set auth cookie is read by middleware + RSC.
+      window.location.assign('/dashboard')
+    } catch (e) {
+      setError(e.message || 'Network error. Please try again.')
+    } finally {
       setLoading(false)
-      return
     }
-
-    // If email confirmation is disabled in Supabase, signUp returns a session.
-    if (data?.session) {
-      // Hard navigation so middleware sees the freshly written auth cookies.
-      window.location.assign('/onboarding')
-      return
-    }
-
-    // Otherwise, prompt them to confirm via email.
-    setNotice('Account created. Check your email to confirm your address, then sign in.')
-    setMode('signin')
-    setPassword('')
-    setLoading(false)
   }
-
-  const submit = () => (mode === 'signin' ? handleSignIn() : handleSignUp())
 
   return (
     <div className="min-h-screen bg-bg flex">
@@ -139,7 +98,6 @@ export default function AuthPage() {
           </div>
 
           <div className="bg-card border border-border rounded-xl p-8">
-            {/* Mode toggle */}
             <div className="flex gap-2 mb-6 bg-bg border border-border rounded-lg p-1">
               <button
                 onClick={() => switchMode('signin')}
@@ -180,30 +138,8 @@ export default function AuthPage() {
               className="w-full bg-bg border border-border rounded-lg px-4 py-3 text-ink text-sm font-mono outline-none focus:border-accent/60 transition-colors mb-4"
             />
 
-            {notice && (
-              <p className="text-accent text-xs mb-4">{notice}</p>
-            )}
-            {error && (
-              <div className="text-red-400 text-xs mb-4 leading-relaxed">
-                {error}
-                {mode === 'signin' && error.toLowerCase().includes("don't have an account") && (
-                  <button
-                    onClick={() => switchMode('signup')}
-                    className="block mt-2 text-accent underline underline-offset-2 hover:opacity-80"
-                  >
-                    Create an account →
-                  </button>
-                )}
-                {mode === 'signup' && error.toLowerCase().includes('already exists') && (
-                  <button
-                    onClick={() => switchMode('signin')}
-                    className="block mt-2 text-accent underline underline-offset-2 hover:opacity-80"
-                  >
-                    Go to sign in →
-                  </button>
-                )}
-              </div>
-            )}
+            {notice && <p className="text-accent text-xs mb-4">{notice}</p>}
+            {error && <p className="text-red-400 text-xs mb-4 leading-relaxed">{error}</p>}
 
             <button
               onClick={submit}

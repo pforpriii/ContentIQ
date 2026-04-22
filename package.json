@@ -4,24 +4,31 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "prisma generate && next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "postinstall": "prisma generate",
+    "db:generate": "prisma generate",
+    "db:push": "prisma db push",
+    "db:migrate": "prisma migrate dev",
+    "db:studio": "prisma studio"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.24.0",
+    "@prisma/client": "^6.19.3",
+    "bcryptjs": "^3.0.3",
+    "jose": "^6.2.2",
+    "lucide-react": "^0.383.0",
     "next": "14.2.5",
     "react": "^18",
-    "react-dom": "^18",
-    "@supabase/supabase-js": "^2.43.4",
-    "@supabase/ssr": "^0.3.0",
-    "@anthropic-ai/sdk": "^0.24.0",
-    "lucide-react": "^0.383.0"
+    "react-dom": "^18"
   },
   "devDependencies": {
-    "tailwindcss": "^3.4.4",
     "autoprefixer": "^10.4.19",
-    "postcss": "^8.4.39",
     "eslint": "^8",
-    "eslint-config-next": "14.2.5"
+    "eslint-config-next": "14.2.5",
+    "postcss": "^8.4.39",
+    "prisma": "^6.19.3",
+    "tailwindcss": "^3.4.4"
   }
 }

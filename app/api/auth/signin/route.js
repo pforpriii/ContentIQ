@@ -1,0 +1,33 @@
+import { NextResponse } from 'next/server'
+import { prisma } from '@/lib/db'
+import { verifyPassword, signAuthToken, setAuthCookie } from '@/lib/auth'
+
+export async function POST(request) {
+  try {
+    const { email, password } = await request.json()
+    if (!email || !password) {
+      return NextResponse.json({ error: 'Email and password are required.' }, { status: 400 })
+    }
+
+    const user = await prisma.user.findUnique({ where: { email } })
+    if (!user) {
+      return NextResponse.json(
+        { error: "We couldn't find an account with that email. Please sign up.", code: 'NO_ACCOUNT' },
+        { status: 404 },
+      )
+    }
+
+    const ok = await verifyPassword(password, user.passwordHash)
+    if (!ok) {
+      return NextResponse.json({ error: 'Incorrect password.' }, { status: 401 })
+    }
+
+    const token = await signAuthToken({ sub: user.id, email: user.email })
+    setAuthCookie(token)
+
+    return NextResponse.json({ user: { id: user.id, email: user.email } })
+  } catch (e) {
+    console.error('[signin]', e)
+    return NextResponse.json({ error: 'Sign-in failed.' }, { status: 500 })
+  }
+}

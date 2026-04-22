@@ -1,5 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { NextResponse } from 'next/server'
+import { prisma } from '@/lib/db'
+import { getSession } from '@/lib/auth'
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
@@ -11,23 +13,27 @@ ABOUT THE USER (use this to personalize content ideas):
 - Role: ${p.role || 'N/A'}
 - Industry: ${p.industry || 'N/A'}
 - Positioning: ${p.positioning || 'N/A'}
-- Unique angle/POV: ${p.unique_angle || 'N/A'}
-- Target audience: ${p.target_audience || 'N/A'}
-- Audience pain points: ${p.audience_pain_points || 'N/A'}
+- Unique angle/POV: ${p.uniqueAngle || 'N/A'}
+- Target audience: ${p.targetAudience || 'N/A'}
+- Audience pain points: ${p.audiencePainPoints || 'N/A'}
 - Tone/voice: ${p.tone || 'N/A'}
-- Preferred formats: ${p.content_formats?.join(', ') || 'N/A'}
-- Past content sample: ${p.past_content ? p.past_content.slice(0, 500) + '...' : 'N/A'}
+- Preferred formats: ${p.contentFormats?.join(', ') || 'N/A'}
+- Past content sample: ${p.pastContent ? p.pastContent.slice(0, 500) + '...' : 'N/A'}
 `.trim()
 }
 
 export async function POST(request) {
+  const session = await getSession()
+  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
   try {
-    const { profiles, userProfile } = await request.json()
+    const { profiles } = await request.json()
 
     if (!profiles?.length) {
       return NextResponse.json({ error: 'No profiles provided' }, { status: 400 })
     }
 
+    const userProfile = await prisma.profile.findUnique({ where: { userId: session.sub } })
     const userCtx = buildUserContext(userProfile)
     const profileList = profiles.map((p, i) => `${i + 1}. ${p}`).join('\n')
 

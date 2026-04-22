@@ -1,0 +1,63 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(uuid()) @db.Uuid
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  profile    Profile?
+  savedIdeas SavedIdea[]
+
+  @@map("users")
+}
+
+model Profile {
+  id                 String   @id @default(uuid()) @db.Uuid
+  userId             String   @unique @map("user_id") @db.Uuid
+  name               String?
+  role               String?
+  industry           String?
+  bio                String?
+  experience         String?
+  positioning        String?
+  uniqueAngle        String?  @map("unique_angle")
+  targetAudience     String?  @map("target_audience")
+  audiencePainPoints String?  @map("audience_pain_points")
+  tone               String?
+  contentFormats     String[] @map("content_formats")
+  pastContent        String?  @map("past_content")
+  favouriteCreators  String[] @map("favourite_creators")
+  onboardingComplete Boolean  @default(false) @map("onboarding_complete")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("profiles")
+}
+
+model SavedIdea {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  title     String
+  hook      String?
+  format    String?
+  angle     String?
+  source    String?
+  tags      String[] @default([])
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("saved_ideas")
+}

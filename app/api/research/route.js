@@ -1,5 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { NextResponse } from 'next/server'
+import { prisma } from '@/lib/db'
+import { getSession } from '@/lib/auth'
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
@@ -11,21 +13,25 @@ ABOUT THE USER:
 - Role: ${p.role || 'N/A'}
 - Industry: ${p.industry || 'N/A'}
 - Positioning: ${p.positioning || 'N/A'}
-- Target audience: ${p.target_audience || 'N/A'}
-- Audience pain points: ${p.audience_pain_points || 'N/A'}
+- Target audience: ${p.targetAudience || 'N/A'}
+- Audience pain points: ${p.audiencePainPoints || 'N/A'}
 - Tone/voice: ${p.tone || 'N/A'}
-- Preferred formats: ${p.content_formats?.join(', ') || 'N/A'}
+- Preferred formats: ${p.contentFormats?.join(', ') || 'N/A'}
 `.trim()
 }
 
 export async function POST(request) {
+  const session = await getSession()
+  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
   try {
-    const { query, userProfile } = await request.json()
+    const { query } = await request.json()
 
     if (!query?.trim()) {
       return NextResponse.json({ error: 'No query provided' }, { status: 400 })
     }
 
+    const userProfile = await prisma.profile.findUnique({ where: { userId: session.sub } })
     const userCtx = buildUserContext(userProfile)
 
     const prompt = `You are a LinkedIn content researcher. Search the web for current news, trends, debates, and conversations around this topic:

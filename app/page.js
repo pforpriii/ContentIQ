@@ -1,6 +1,5 @@
 'use client'
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 
 export default function AuthPage() {
@@ -11,7 +10,6 @@ export default function AuthPage() {
   const [error, setError]       = useState('')
   const [notice, setNotice]     = useState('')
   const supabase = createClient()
-  const router   = useRouter()
 
   const switchMode = (next) => {
     setMode(next)
@@ -44,12 +42,22 @@ export default function AuthPage() {
     }
 
     if (data?.session) {
-      router.push('/onboarding')
-      router.refresh()
-    } else {
-      setError('Sign-in failed. Please try again.')
-      setLoading(false)
+      await redirectAfterAuth(data.user.id)
+      return
     }
+
+    setError('Sign-in failed. Please try again.')
+    setLoading(false)
+  }
+
+  async function redirectAfterAuth(userId) {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('onboarding_complete')
+      .eq('id', userId)
+      .single()
+    // Hard navigation so middleware sees the freshly written auth cookies.
+    window.location.assign(profile?.onboarding_complete ? '/dashboard' : '/onboarding')
   }
 
   async function handleSignUp() {
@@ -78,8 +86,8 @@ export default function AuthPage() {
 
     // If email confirmation is disabled in Supabase, signUp returns a session.
     if (data?.session) {
-      router.push('/onboarding')
-      router.refresh()
+      // Hard navigation so middleware sees the freshly written auth cookies.
+      window.location.assign('/onboarding')
       return
     }
 

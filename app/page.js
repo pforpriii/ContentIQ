@@ -1,28 +1,96 @@
 'use client'
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 
 export default function AuthPage() {
-  const [email, setEmail]   = useState('')
-  const [sent, setSent]     = useState(false)
-  const [loading, setLoading] = useState(false)
-  const [error, setError]   = useState('')
+  const [mode, setMode]         = useState('signin') // 'signin' | 'signup'
+  const [email, setEmail]       = useState('')
+  const [password, setPassword] = useState('')
+  const [loading, setLoading]   = useState(false)
+  const [error, setError]       = useState('')
+  const [notice, setNotice]     = useState('')
   const supabase = createClient()
+  const router   = useRouter()
 
-  async function sendLink() {
-    if (!email) return
-    setLoading(true); setError('')
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
-      options: {
-        shouldCreateUser: true,
-        emailRedirectTo: `${window.location.origin}/auth/callback`,
-      },
-    })
-    if (error) setError(error.message)
-    else setSent(true)
+  const switchMode = (next) => {
+    setMode(next)
+    setError('')
+    setNotice('')
+  }
+
+  async function handleSignIn() {
+    if (!email || !password) {
+      setError('Email and password are required.')
+      return
+    }
+    setLoading(true); setError(''); setNotice('')
+
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+
+    if (error) {
+      // Supabase returns the same "Invalid login credentials" for both a missing
+      // account and a wrong password — we can't distinguish, so guide the user.
+      const msg = (error.message || '').toLowerCase()
+      if (msg.includes('invalid login') || msg.includes('invalid credentials')) {
+        setError("We couldn't sign you in. If you don't have an account yet, please sign up.")
+      } else if (msg.includes('email not confirmed')) {
+        setError('Your email is not confirmed yet. Check your inbox for the confirmation email.')
+      } else {
+        setError(error.message)
+      }
+      setLoading(false)
+      return
+    }
+
+    if (data?.session) {
+      router.push('/onboarding')
+      router.refresh()
+    } else {
+      setError('Sign-in failed. Please try again.')
+      setLoading(false)
+    }
+  }
+
+  async function handleSignUp() {
+    if (!email || !password) {
+      setError('Email and password are required.')
+      return
+    }
+    if (password.length < 6) {
+      setError('Password must be at least 6 characters.')
+      return
+    }
+    setLoading(true); setError(''); setNotice('')
+
+    const { data, error } = await supabase.auth.signUp({ email, password })
+
+    if (error) {
+      const msg = (error.message || '').toLowerCase()
+      if (msg.includes('already registered') || msg.includes('already been registered') || msg.includes('user already')) {
+        setError('An account with this email already exists. Please sign in instead.')
+      } else {
+        setError(error.message)
+      }
+      setLoading(false)
+      return
+    }
+
+    // If email confirmation is disabled in Supabase, signUp returns a session.
+    if (data?.session) {
+      router.push('/onboarding')
+      router.refresh()
+      return
+    }
+
+    // Otherwise, prompt them to confirm via email.
+    setNotice('Account created. Check your email to confirm your address, then sign in.')
+    setMode('signin')
+    setPassword('')
     setLoading(false)
   }
+
+  const submit = () => (mode === 'signin' ? handleSignIn() : handleSignUp())
 
   return (
     <div className="min-h-screen bg-bg flex">
@@ -51,55 +119,106 @@ export default function AuthPage() {
         <div className="max-w-md w-full mx-auto">
           <div className="lg:hidden text-accent font-mono text-sm tracking-widest mb-10">ContentIQ</div>
 
-          {!sent ? (
-            <>
-              <div className="mb-8">
-                <h2 className="font-display text-3xl font-bold text-ink mb-2">Welcome</h2>
-                <p className="text-muted text-sm">Sign in or create your account — no password needed.</p>
+          <div className="mb-8">
+            <h2 className="font-display text-3xl font-bold text-ink mb-2">
+              {mode === 'signin' ? 'Welcome back' : 'Create your account'}
+            </h2>
+            <p className="text-muted text-sm">
+              {mode === 'signin'
+                ? 'Sign in to continue to your dashboard.'
+                : 'Sign up to start building your LinkedIn brand engine.'}
+            </p>
+          </div>
+
+          <div className="bg-card border border-border rounded-xl p-8">
+            {/* Mode toggle */}
+            <div className="flex gap-2 mb-6 bg-bg border border-border rounded-lg p-1">
+              <button
+                onClick={() => switchMode('signin')}
+                className={`flex-1 py-2 rounded-md text-xs uppercase tracking-widest font-mono transition-colors ${
+                  mode === 'signin' ? 'bg-accent text-black font-bold' : 'text-muted hover:text-ink'
+                }`}
+              >
+                Sign In
+              </button>
+              <button
+                onClick={() => switchMode('signup')}
+                className={`flex-1 py-2 rounded-md text-xs uppercase tracking-widest font-mono transition-colors ${
+                  mode === 'signup' ? 'bg-accent text-black font-bold' : 'text-muted hover:text-ink'
+                }`}
+              >
+                Sign Up
+              </button>
+            </div>
+
+            <label className="block text-xs uppercase tracking-widest text-muted mb-2">Email Address</label>
+            <input
+              type="email"
+              placeholder="you@example.com"
+              value={email}
+              onChange={e => setEmail(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && submit()}
+              className="w-full bg-bg border border-border rounded-lg px-4 py-3 text-ink text-sm font-mono outline-none focus:border-accent/60 transition-colors mb-4"
+              autoFocus
+            />
+
+            <label className="block text-xs uppercase tracking-widest text-muted mb-2">Password</label>
+            <input
+              type="password"
+              placeholder={mode === 'signup' ? 'At least 6 characters' : '••••••••'}
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && submit()}
+              className="w-full bg-bg border border-border rounded-lg px-4 py-3 text-ink text-sm font-mono outline-none focus:border-accent/60 transition-colors mb-4"
+            />
+
+            {notice && (
+              <p className="text-accent text-xs mb-4">{notice}</p>
+            )}
+            {error && (
+              <div className="text-red-400 text-xs mb-4 leading-relaxed">
+                {error}
+                {mode === 'signin' && error.toLowerCase().includes("don't have an account") && (
+                  <button
+                    onClick={() => switchMode('signup')}
+                    className="block mt-2 text-accent underline underline-offset-2 hover:opacity-80"
+                  >
+                    Create an account →
+                  </button>
+                )}
+                {mode === 'signup' && error.toLowerCase().includes('already exists') && (
+                  <button
+                    onClick={() => switchMode('signin')}
+                    className="block mt-2 text-accent underline underline-offset-2 hover:opacity-80"
+                  >
+                    Go to sign in →
+                  </button>
+                )}
               </div>
-              <div className="bg-card border border-border rounded-xl p-8">
-                <label className="block text-xs uppercase tracking-widest text-muted mb-2">Email Address</label>
-                <input
-                  type="email"
-                  placeholder="you@gmail.com"
-                  value={email}
-                  onChange={e => setEmail(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && sendLink()}
-                  className="w-full bg-bg border border-border rounded-lg px-4 py-3 text-ink text-sm font-mono outline-none focus:border-accent/60 transition-colors mb-4"
-                  autoFocus
-                />
-                {error && <p className="text-red-400 text-xs mb-4">{error}</p>}
-                <button
-                  onClick={sendLink}
-                  disabled={loading || !email}
-                  className="w-full bg-accent text-black font-bold tracking-widest text-xs uppercase py-4 rounded-lg hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  {loading ? 'Sending...' : 'Send Login Link →'}
-                </button>
-              </div>
-              <p className="text-center text-muted text-xs mt-5">No password. Just a link to your inbox.</p>
-            </>
-          ) : (
-            <>
-              <div className="mb-8">
-                <h2 className="font-display text-3xl font-bold text-ink mb-2">Check your email</h2>
-                <p className="text-muted text-sm">We sent a login link to <span className="text-ink font-medium">{email}</span></p>
-              </div>
-              <div className="bg-card border border-border rounded-xl p-8 text-center">
-                <div className="text-5xl mb-4">📬</div>
-                <p className="text-ink text-sm font-medium mb-2">Click the link in your email</p>
-                <p className="text-muted text-xs leading-relaxed mb-6">
-                  Open your email and click the <strong>"Log In"</strong> button. It will bring you straight into your dashboard.
-                </p>
-                <button
-                  onClick={() => { setSent(false); setEmail(''); }}
-                  className="text-muted text-xs hover:text-ink transition-colors"
-                >
-                  ← Use a different email
-                </button>
-              </div>
-            </>
-          )}
+            )}
+
+            <button
+              onClick={submit}
+              disabled={loading || !email || !password}
+              className="w-full bg-accent text-black font-bold tracking-widest text-xs uppercase py-4 rounded-lg hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {loading
+                ? (mode === 'signin' ? 'Signing in...' : 'Creating account...')
+                : (mode === 'signin' ? 'Sign In →' : 'Sign Up →')}
+            </button>
+          </div>
+
+          <p className="text-center text-muted text-xs mt-5">
+            {mode === 'signin' ? (
+              <>Don't have an account?{' '}
+                <button onClick={() => switchMode('signup')} className="text-accent hover:opacity-80">Sign up</button>
+              </>
+            ) : (
+              <>Already have an account?{' '}
+                <button onClick={() => switchMode('signin')} className="text-accent hover:opacity-80">Sign in</button>
+              </>
+            )}
+          </p>
         </div>
       </div>
     </div>

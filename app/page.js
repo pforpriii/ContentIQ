@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation'
 export default function AuthPage() {
   const [email, setEmail]     = useState('')
   const [otp, setOtp]         = useState('')
-  const [step, setStep]       = useState('email')  // 'email' | 'otp'
+  const [step, setStep]       = useState('email')
   const [loading, setLoading] = useState(false)
   const [error, setError]     = useState('')
   const supabase = createClient()
@@ -17,7 +17,10 @@ export default function AuthPage() {
     setLoading(true); setError('')
     const { error } = await supabase.auth.signInWithOtp({
       email,
-      options: { shouldCreateUser: true },
+      options: {
+        shouldCreateUser: true,
+        emailRedirectTo: null,
+      },
     })
     if (error) setError(error.message)
     else setStep('otp')
@@ -27,13 +30,30 @@ export default function AuthPage() {
   async function verifyOTP() {
     if (otp.length < 6) return
     setLoading(true); setError('')
-    const { data, error } = await supabase.auth.verifyOtp({
-      email, token: otp, type: 'email',
+
+    // Try 'email' type first, then 'magiclink' as fallback
+    let result = await supabase.auth.verifyOtp({
+      email,
+      token: otp,
+      type: 'email',
     })
-    if (error) { setError(error.message); setLoading(false); return }
+
+    if (result.error) {
+      result = await supabase.auth.verifyOtp({
+        email,
+        token: otp,
+        type: 'magiclink',
+      })
+    }
+
+    if (result.error) {
+      setError(result.error.message)
+      setLoading(false)
+      return
+    }
 
     const { data: profile } = await supabase
-      .from('profiles').select('onboarding_complete').eq('id', data.user.id).single()
+      .from('profiles').select('onboarding_complete').eq('id', result.data.user.id).single()
 
     router.push(profile?.onboarding_complete ? '/dashboard' : '/onboarding')
     setLoading(false)
@@ -41,7 +61,6 @@ export default function AuthPage() {
 
   return (
     <div className="min-h-screen bg-bg flex">
-      {/* Left — branding */}
       <div className="hidden lg:flex flex-col justify-between w-1/2 p-16 border-r border-border bg-card">
         <div className="text-accent font-mono text-sm tracking-widest">ContentIQ</div>
         <div>
@@ -63,13 +82,9 @@ export default function AuthPage() {
         </div>
       </div>
 
-      {/* Right — auth form */}
       <div className="flex flex-col justify-center w-full lg:w-1/2 p-8 lg:p-16">
         <div className="max-w-md w-full mx-auto">
-
-          {/* Mobile logo */}
           <div className="lg:hidden text-accent font-mono text-sm tracking-widest mb-10">ContentIQ</div>
-
           <div className="mb-8">
             <h2 className="font-display text-3xl font-bold text-ink mb-2">
               {step === 'email' ? 'Welcome' : 'Check your email'}
@@ -87,7 +102,7 @@ export default function AuthPage() {
                 <label className="block text-xs uppercase tracking-widest text-muted mb-2">Email Address</label>
                 <input
                   type="email"
-                  placeholder="you@company.com"
+                  placeholder="you@gmail.com"
                   value={email}
                   onChange={e => setEmail(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && sendOTP()}
@@ -134,7 +149,6 @@ export default function AuthPage() {
               </>
             )}
           </div>
-
           <p className="text-center text-muted text-xs mt-5">
             No password. No friction. Just a code to your inbox.
           </p>

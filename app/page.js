@@ -17,10 +17,7 @@ export default function AuthPage() {
     setLoading(true); setError('')
     const { error } = await supabase.auth.signInWithOtp({
       email,
-      options: {
-        shouldCreateUser: true,
-        emailRedirectTo: null,
-      },
+      options: { shouldCreateUser: true },
     })
     if (error) setError(error.message)
     else setStep('otp')
@@ -31,31 +28,27 @@ export default function AuthPage() {
     if (otp.length < 6) return
     setLoading(true); setError('')
 
-    // Try 'email' type first, then 'magiclink' as fallback
-    let result = await supabase.auth.verifyOtp({
-      email,
-      token: otp,
-      type: 'email',
-    })
+    const types = ['email', 'magiclink', 'signup', 'recovery']
+    let success = false
 
-    if (result.error) {
-      result = await supabase.auth.verifyOtp({
+    for (const type of types) {
+      const { data, error } = await supabase.auth.verifyOtp({
         email,
         token: otp,
-        type: 'magiclink',
+        type,
       })
+      if (!error && data?.user) {
+        const { data: profile } = await supabase
+          .from('profiles').select('onboarding_complete').eq('id', data.user.id).single()
+        router.push(profile?.onboarding_complete ? '/dashboard' : '/onboarding')
+        success = true
+        break
+      }
     }
 
-    if (result.error) {
-      setError(result.error.message)
-      setLoading(false)
-      return
+    if (!success) {
+      setError('Code is invalid or expired. Please request a new one.')
     }
-
-    const { data: profile } = await supabase
-      .from('profiles').select('onboarding_complete').eq('id', result.data.user.id).single()
-
-    router.push(profile?.onboarding_complete ? '/dashboard' : '/onboarding')
     setLoading(false)
   }
 
@@ -69,7 +62,7 @@ export default function AuthPage() {
             <span className="text-accent">Brand Engine.</span>
           </h1>
           <p className="text-muted text-lg leading-relaxed max-w-sm">
-            Analyze top creators in your space. Research trending topics. Get AI-generated content ideas — all tailored to your voice, audience, and goals.
+            Analyze top creators. Research trending topics. Get AI-generated content ideas tailored to your voice and goals.
           </p>
         </div>
         <div className="flex flex-col gap-3">

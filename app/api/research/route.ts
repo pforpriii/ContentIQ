@@ -1,11 +1,12 @@
 import Anthropic from '@anthropic-ai/sdk'
-import { NextResponse } from 'next/server'
+import { NextResponse, type NextRequest } from 'next/server'
 import { prisma } from '@/lib/db'
 import { getSession } from '@/lib/auth'
+import type { Profile } from '@prisma/client'
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
-function buildUserContext(p) {
+function buildUserContext(p: Profile | null): string {
   if (!p) return ''
   return `
 ABOUT THE USER:
@@ -20,12 +21,16 @@ ABOUT THE USER:
 `.trim()
 }
 
-export async function POST(request) {
+interface ResearchBody {
+  query?: string
+}
+
+export async function POST(request: NextRequest) {
   const session = await getSession()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   try {
-    const { query } = await request.json()
+    const { query }: ResearchBody = await request.json()
 
     if (!query?.trim()) {
       return NextResponse.json({ error: 'No query provided' }, { status: 400 })
@@ -67,29 +72,17 @@ Respond ONLY in valid JSON (no markdown, no preamble):
   ]
 }`
 
-    let response = await client.messages.create({
+    const response = await client.messages.create({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 4000,
       tools: [{ type: 'web_search_20250305', name: 'web_search' }],
       messages: [{ role: 'user', content: prompt }],
     })
 
-    const messages = [{ role: 'user', content: prompt }]
-    while (response.stop_reason === 'tool_use') {
-      messages.push({ role: 'assistant', content: response.content })
-      const toolResults = response.content
-        .filter(b => b.type === 'tool_use')
-        .map(b => ({ type: 'tool_result', tool_use_id: b.id, content: 'Search completed' }))
-      messages.push({ role: 'user', content: toolResults })
-      response = await client.messages.create({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 4000,
-        tools: [{ type: 'web_search_20250305', name: 'web_search' }],
-        messages,
-      })
-    }
-
-    const rawText = response.content.filter(b => b.type === 'text').map(b => b.text).join('')
+    const rawText = response.content
+      .filter((b): b is Extract<typeof b, { type: 'text' }> => b.type === 'text')
+      .map(b => b.text)
+      .join('')
     const clean   = rawText.replace(/```json|```/g, '').trim()
     const start   = clean.indexOf('{')
     const end     = clean.lastIndexOf('}')
@@ -98,6 +91,7 @@ Respond ONLY in valid JSON (no markdown, no preamble):
     return NextResponse.json(parsed)
   } catch (err) {
     console.error('Research error:', err)
-    return NextResponse.json({ error: err.message }, { status: 500 })
+    const message = err instanceof Error ? err.message : 'Research failed'
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }

@@ -1,13 +1,22 @@
-import { NextResponse } from 'next/server'
+import { NextResponse, type NextRequest } from 'next/server'
 import { prisma } from '@/lib/db'
 import { getSession } from '@/lib/auth'
 
-export async function POST(request) {
+interface IdeaBody {
+  title?: string
+  hook?: string | null
+  format?: string | null
+  angle?: string | null
+  source?: string | null
+  tags?: string[]
+}
+
+export async function POST(request: NextRequest) {
   const session = await getSession()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   try {
-    const { title, hook, format, angle, source, tags } = await request.json()
+    const { title, hook, format, angle, source, tags }: IdeaBody = await request.json()
     if (!title) return NextResponse.json({ error: 'Title is required.' }, { status: 400 })
 
     const idea = await prisma.savedIdea.create({

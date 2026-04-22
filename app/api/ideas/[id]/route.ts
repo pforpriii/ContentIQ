@@ -1,8 +1,8 @@
-import { NextResponse } from 'next/server'
+import { NextResponse, type NextRequest } from 'next/server'
 import { prisma } from '@/lib/db'
 import { getSession } from '@/lib/auth'
 
-export async function DELETE(_request, { params }) {
+export async function DELETE(_request: NextRequest, { params }: { params: { id: string } }) {
   const session = await getSession()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 

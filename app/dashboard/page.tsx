@@ -21,17 +21,7 @@ export default async function DashboardPage() {
   if (!user) redirect('/')
   if (!user.profile?.onboardingComplete) redirect('/onboarding')
 
-  const profile = {
-    ...user.profile,
-    email: user.email,
-    content_formats: user.profile.contentFormats,
-    favourite_creators: user.profile.favouriteCreators,
-    target_audience: user.profile.targetAudience,
-    audience_pain_points: user.profile.audiencePainPoints,
-    unique_angle: user.profile.uniqueAngle,
-    past_content: user.profile.pastContent,
-    onboarding_complete: user.profile.onboardingComplete,
-  }
+  const profile = { ...user.profile, email: user.email }
 
   return <DashboardClient profile={profile} initialSavedIdeas={savedIdeas} />
 }

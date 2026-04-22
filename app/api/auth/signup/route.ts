@@ -1,10 +1,15 @@
-import { NextResponse } from 'next/server'
+import { NextResponse, type NextRequest } from 'next/server'
 import { prisma } from '@/lib/db'
 import { hashPassword, signAuthToken, setAuthCookie } from '@/lib/auth'
 
-export async function POST(request) {
+interface SignupBody {
+  email?: string
+  password?: string
+}
+
+export async function POST(request: NextRequest) {
   try {
-    const { email, password } = await request.json()
+    const { email, password }: SignupBody = await request.json()
     if (!email || !password) {
       return NextResponse.json({ error: 'Email and password are required.' }, { status: 400 })
     }

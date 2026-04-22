@@ -1,15 +1,15 @@
 'use client'
-import { useState } from 'react'
+import { useState, type ChangeEvent } from 'react'
 
 const STEPS = [
   { num: 1, title: 'The Basics',         sub: 'Who are you?' },
   { num: 2, title: 'Your Story',         sub: 'Background & experience' },
   { num: 3, title: 'Positioning',        sub: 'What you stand for' },
-  { num: 4, title: 'Your Audience',      sub: 'Who you\'re writing for' },
+  { num: 4, title: 'Your Audience',      sub: "Who you're writing for" },
   { num: 5, title: 'Content Style',      sub: 'How you want to show up' },
   { num: 6, title: 'Past Content',       sub: 'Help us learn your voice' },
   { num: 7, title: 'Creator Inspiration', sub: 'Who do you learn from' },
-]
+] as const
 
 const TONES = [
   'Professional & authoritative',
@@ -18,43 +18,67 @@ const TONES = [
   'Educational & clear',
   'Storytelling & narrative',
   'Analytical & data-driven',
-]
+] as const
 
 const FORMATS = [
   'Personal stories', 'How-to posts', 'Opinion pieces',
   'Industry insights', 'Case studies', 'Lists & tips',
   'Research threads', 'Behind the scenes',
-]
+] as const
+
+interface OnboardingForm {
+  name: string
+  role: string
+  industry: string
+  bio: string
+  experience: string
+  positioning: string
+  uniqueAngle: string
+  targetAudience: string
+  audiencePainPoints: string
+  tone: string
+  contentFormats: string[]
+  pastContent: string
+  favouriteCreators: string[]
+}
+
+const INITIAL_FORM: OnboardingForm = {
+  name: '', role: '', industry: '',
+  bio: '', experience: '',
+  positioning: '', uniqueAngle: '',
+  targetAudience: '', audiencePainPoints: '',
+  tone: '', contentFormats: [],
+  pastContent: '',
+  favouriteCreators: [],
+}
 
 export default function OnboardingPage() {
-  const [step, setStep]     = useState(1)
+  const [step, setStep] = useState(1)
   const [saving, setSaving] = useState(false)
   const [creatorInput, setCreatorInput] = useState('')
-  const [form, setForm] = useState({
-    name: '', role: '', industry: '',
-    bio: '', experience: '',
-    positioning: '', unique_angle: '',
-    target_audience: '', audience_pain_points: '',
-    tone: '', content_formats: [],
-    past_content: '',
-    favourite_creators: [],
-  })
-  const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
-  const toggleFmt = f => set('content_formats',
-    form.content_formats.includes(f)
-      ? form.content_formats.filter(x => x !== f)
-      : [...form.content_formats, f]
+  const [form, setForm] = useState<OnboardingForm>(INITIAL_FORM)
+
+  function set<K extends keyof OnboardingForm>(key: K, value: OnboardingForm[K]) {
+    setForm(f => ({ ...f, [key]: value }))
+  }
+
+  const toggleFmt = (f: string) => set(
+    'contentFormats',
+    form.contentFormats.includes(f)
+      ? form.contentFormats.filter(x => x !== f)
+      : [...form.contentFormats, f],
   )
+
   const addCreator = () => {
     const v = creatorInput.trim()
-    if (v && !form.favourite_creators.includes(v)) {
-      set('favourite_creators', [...form.favourite_creators, v])
+    if (v && !form.favouriteCreators.includes(v)) {
+      set('favouriteCreators', [...form.favouriteCreators, v])
       setCreatorInput('')
     }
   }
 
-  const canContinue = () => {
-    if (step === 1) return form.name && form.role && form.industry
+  const canContinue = (): boolean => {
+    if (step === 1) return !!(form.name && form.role && form.industry)
     return true
   }
 
@@ -63,7 +87,7 @@ export default function OnboardingPage() {
     const res = await fetch('/api/profile', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...form, onboarding_complete: true }),
+      body: JSON.stringify({ ...form, onboardingComplete: true }),
     })
     if (res.ok) {
       window.location.assign('/dashboard')
@@ -76,8 +100,6 @@ export default function OnboardingPage() {
   return (
     <div className="min-h-screen bg-bg flex items-center justify-center p-6">
       <div className="w-full max-w-2xl">
-
-        {/* Progress bar */}
         <div className="mb-8">
           <div className="flex justify-between mb-2 text-xs text-muted font-mono">
             <span>Step {step} of {STEPS.length}</span>
@@ -89,7 +111,6 @@ export default function OnboardingPage() {
               style={{ width: `${(step / STEPS.length) * 100}%` }}
             />
           </div>
-          {/* Step labels */}
           <div className="flex mt-3 gap-1">
             {STEPS.map(s => (
               <div
@@ -100,14 +121,12 @@ export default function OnboardingPage() {
           </div>
         </div>
 
-        {/* Card */}
         <div className="bg-card border border-border rounded-xl p-8 animate-fade-up" key={step}>
           <div className="mb-6">
-            <p className="text-accent text-xs tracking-widest uppercase font-mono mb-1">{STEPS[step-1].sub}</p>
-            <h2 className="font-display text-3xl font-bold text-ink">{STEPS[step-1].title}</h2>
+            <p className="text-accent text-xs tracking-widest uppercase font-mono mb-1">{STEPS[step - 1].sub}</p>
+            <h2 className="font-display text-3xl font-bold text-ink">{STEPS[step - 1].title}</h2>
           </div>
 
-          {/* ── Step 1: Basics ── */}
           {step === 1 && (
             <div className="space-y-4">
               <Field label="Your Name" value={form.name} onChange={v => set('name', v)} placeholder="e.g. Priya Sharma" />
@@ -116,67 +135,27 @@ export default function OnboardingPage() {
             </div>
           )}
 
-          {/* ── Step 2: Story ── */}
           {step === 2 && (
             <div className="space-y-4">
-              <TA
-                label="Professional Background"
-                value={form.bio}
-                onChange={v => set('bio', v)}
-                placeholder="Describe your professional journey — roles, companies, pivotal moments, how you got to where you are today..."
-                rows={4}
-              />
-              <TA
-                label="Your Expertise & Experience"
-                value={form.experience}
-                onChange={v => set('experience', v)}
-                placeholder="What do you know deeply? What have you done that most people in your field haven't? Awards, results, numbers if you have them."
-                rows={4}
-              />
+              <TA label="Professional Background" value={form.bio} onChange={v => set('bio', v)} placeholder="Describe your professional journey — roles, companies, pivotal moments, how you got to where you are today..." rows={4} />
+              <TA label="Your Expertise & Experience" value={form.experience} onChange={v => set('experience', v)} placeholder="What do you know deeply? What have you done that most people in your field haven't? Awards, results, numbers if you have them." rows={4} />
             </div>
           )}
 
-          {/* ── Step 3: Positioning ── */}
           {step === 3 && (
             <div className="space-y-4">
-              <TA
-                label="Your Positioning Statement"
-                value={form.positioning}
-                onChange={v => set('positioning', v)}
-                placeholder="How do you explain what you do? e.g. 'I help Series A founders build GTM motions that don't rely on paid ads...'"
-                rows={3}
-              />
-              <TA
-                label="Your Unique Point of View"
-                value={form.unique_angle}
-                onChange={v => set('unique_angle', v)}
-                placeholder="What do you believe that others in your industry don't? What's your contrarian take? What makes you different?"
-                rows={3}
-              />
+              <TA label="Your Positioning Statement" value={form.positioning} onChange={v => set('positioning', v)} placeholder="How do you explain what you do? e.g. 'I help Series A founders build GTM motions that don't rely on paid ads...'" rows={3} />
+              <TA label="Your Unique Point of View" value={form.uniqueAngle} onChange={v => set('uniqueAngle', v)} placeholder="What do you believe that others in your industry don't? What's your contrarian take? What makes you different?" rows={3} />
             </div>
           )}
 
-          {/* ── Step 4: Audience ── */}
           {step === 4 && (
             <div className="space-y-4">
-              <TA
-                label="Who Is Your Ideal Audience?"
-                value={form.target_audience}
-                onChange={v => set('target_audience', v)}
-                placeholder="Describe them: their role, company stage, experience level, what they're working on, what they aspire to..."
-                rows={3}
-              />
-              <TA
-                label="Their Biggest Pain Points & Questions"
-                value={form.audience_pain_points}
-                onChange={v => set('audience_pain_points', v)}
-                placeholder="What problems keep them up at night? What do they ask you most? What frustrates them about your industry?"
-                rows={3}
-              />
+              <TA label="Who Is Your Ideal Audience?" value={form.targetAudience} onChange={v => set('targetAudience', v)} placeholder="Describe them: their role, company stage, experience level, what they're working on, what they aspire to..." rows={3} />
+              <TA label="Their Biggest Pain Points & Questions" value={form.audiencePainPoints} onChange={v => set('audiencePainPoints', v)} placeholder="What problems keep them up at night? What do they ask you most? What frustrates them about your industry?" rows={3} />
             </div>
           )}
 
-          {/* ── Step 5: Style ── */}
           {step === 5 && (
             <div className="space-y-6">
               <div>
@@ -205,7 +184,7 @@ export default function OnboardingPage() {
                       key={f}
                       onClick={() => toggleFmt(f)}
                       className={`px-3 py-1.5 rounded-full border text-xs transition-all duration-150 ${
-                        form.content_formats.includes(f)
+                        form.contentFormats.includes(f)
                           ? 'border-accent bg-accent/10 text-accent'
                           : 'border-border text-muted hover:border-accent/30 hover:text-ink'
                       }`}
@@ -218,13 +197,12 @@ export default function OnboardingPage() {
             </div>
           )}
 
-          {/* ── Step 6: Past Content ── */}
           {step === 6 && (
             <div className="space-y-3">
               <TA
                 label="Paste Your Content, Transcripts, or Writing Samples"
-                value={form.past_content}
-                onChange={v => set('past_content', v)}
+                value={form.pastContent}
+                onChange={v => set('pastContent', v)}
                 placeholder={`Paste anything that shows how you think and write:\n\n• LinkedIn posts you've written\n• Newsletter emails\n• Podcast/talk transcripts\n• Blog posts or articles\n• Even voice-note transcriptions\n\nThe more you add, the better the AI will understand your natural voice.`}
                 rows={12}
               />
@@ -234,7 +212,6 @@ export default function OnboardingPage() {
             </div>
           )}
 
-          {/* ── Step 7: Creators ── */}
           {step === 7 && (
             <div className="space-y-4">
               <div>
@@ -254,14 +231,14 @@ export default function OnboardingPage() {
                   >+</button>
                 </div>
                 <div className="flex flex-wrap gap-2 min-h-[40px]">
-                  {form.favourite_creators.length === 0 && (
+                  {form.favouriteCreators.length === 0 && (
                     <span className="text-xs text-muted">No creators added yet — you can skip this and add from the dashboard.</span>
                   )}
-                  {form.favourite_creators.map(c => (
+                  {form.favouriteCreators.map(c => (
                     <span key={c} className="flex items-center gap-1.5 bg-bg border border-border rounded-full px-3 py-1 text-xs text-ink">
                       {c.length > 35 ? c.slice(0, 35) + '…' : c}
                       <button
-                        onClick={() => set('favourite_creators', form.favourite_creators.filter(x => x !== c))}
+                        onClick={() => set('favouriteCreators', form.favouriteCreators.filter(x => x !== c))}
                         className="text-red-400 hover:text-red-300 transition-colors ml-0.5"
                       >×</button>
                     </span>
@@ -271,7 +248,6 @@ export default function OnboardingPage() {
             </div>
           )}
 
-          {/* Navigation */}
           <div className="flex gap-3 mt-8">
             {step > 1 && (
               <button
@@ -305,13 +281,20 @@ export default function OnboardingPage() {
   )
 }
 
-function Field({ label, value, onChange, placeholder }) {
+interface FieldProps {
+  label: string
+  value: string
+  onChange: (v: string) => void
+  placeholder?: string
+}
+
+function Field({ label, value, onChange, placeholder }: FieldProps) {
   return (
     <div>
       <label className="block text-xs uppercase tracking-widest text-muted mb-2 font-mono">{label}</label>
       <input
         value={value}
-        onChange={e => onChange(e.target.value)}
+        onChange={(e: ChangeEvent<HTMLInputElement>) => onChange(e.target.value)}
         placeholder={placeholder}
         className="w-full bg-bg border border-border rounded-lg px-4 py-3 text-ink text-sm outline-none focus:border-accent/60 transition-colors font-sans"
       />
@@ -319,13 +302,13 @@ function Field({ label, value, onChange, placeholder }) {
   )
 }
 
-function TA({ label, value, onChange, placeholder, rows = 4 }) {
+function TA({ label, value, onChange, placeholder, rows = 4 }: FieldProps & { rows?: number }) {
   return (
     <div>
       <label className="block text-xs uppercase tracking-widest text-muted mb-2 font-mono">{label}</label>
       <textarea
         value={value}
-        onChange={e => onChange(e.target.value)}
+        onChange={(e: ChangeEvent<HTMLTextAreaElement>) => onChange(e.target.value)}
         placeholder={placeholder}
         rows={rows}
         className="w-full bg-bg border border-border rounded-lg px-4 py-3 text-ink text-sm outline-none focus:border-accent/60 transition-colors font-sans resize-none leading-relaxed"

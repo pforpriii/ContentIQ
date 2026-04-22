@@ -1,14 +1,14 @@
-import { NextResponse } from 'next/server'
-import { jwtVerify } from 'jose'
+import { NextRequest, NextResponse } from 'next/server'
+import { jwtVerify, type JWTPayload } from 'jose'
 
 const AUTH_COOKIE = 'auth-token'
 
-function getSecret() {
+function getSecret(): Uint8Array {
   const raw = process.env.AUTH_SECRET || 'dev-only-secret-change-me'
   return new TextEncoder().encode(raw)
 }
 
-async function readUser(request) {
+async function readUser(request: NextRequest): Promise<JWTPayload | null> {
   const token = request.cookies.get(AUTH_COOKIE)?.value
   if (!token) return null
   try {
@@ -19,7 +19,7 @@ async function readUser(request) {
   }
 }
 
-export async function middleware(request) {
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
   const user = await readUser(request)
 

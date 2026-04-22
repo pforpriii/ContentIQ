@@ -1,15 +1,22 @@
 'use client'
 import { useState } from 'react'
 
+type Mode = 'signin' | 'signup'
+
+interface AuthErrorResponse {
+  error?: string
+  code?: 'NO_ACCOUNT' | 'ACCOUNT_EXISTS' | string
+}
+
 export default function AuthPage() {
-  const [mode, setMode]         = useState('signin')
+  const [mode, setMode]         = useState<Mode>('signin')
   const [email, setEmail]       = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading]   = useState(false)
   const [error, setError]       = useState('')
   const [notice, setNotice]     = useState('')
 
-  const switchMode = (next) => {
+  const switchMode = (next: Mode) => {
     setMode(next)
     setError('')
     setNotice('')
@@ -33,27 +40,26 @@ export default function AuthPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
       })
-      const data = await res.json().catch(() => ({}))
+      const data: AuthErrorResponse = await res.json().catch(() => ({}))
 
       if (!res.ok) {
         if (data.code === 'NO_ACCOUNT') {
-          setError(data.error)
+          setError(data.error ?? 'No account found.')
           setNotice('Switching you to sign-up…')
           setMode('signup')
         } else if (data.code === 'ACCOUNT_EXISTS') {
-          setError(data.error)
+          setError(data.error ?? 'Account already exists.')
           setNotice('Switching you to sign-in…')
           setMode('signin')
         } else {
-          setError(data.error || `${mode === 'signin' ? 'Sign-in' : 'Sign-up'} failed.`)
+          setError(data.error ?? `${mode === 'signin' ? 'Sign-in' : 'Sign-up'} failed.`)
         }
         return
       }
 
-      // Hard navigation so the newly set auth cookie is read by middleware + RSC.
       window.location.assign('/dashboard')
     } catch (e) {
-      setError(e.message || 'Network error. Please try again.')
+      setError(e instanceof Error ? e.message : 'Network error. Please try again.')
     } finally {
       setLoading(false)
     }
@@ -154,7 +160,7 @@ export default function AuthPage() {
 
           <p className="text-center text-muted text-xs mt-5">
             {mode === 'signin' ? (
-              <>Don't have an account?{' '}
+              <>Don&apos;t have an account?{' '}
                 <button onClick={() => switchMode('signup')} className="text-accent hover:opacity-80">Sign up</button>
               </>
             ) : (

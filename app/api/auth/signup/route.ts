@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { prisma } from '@/lib/db'
 import { hashPassword, signAuthToken, setAuthCookie } from '@/lib/auth'
+import { checkLimit, getClientIp, tooManyRequests, LIMITS } from '@/lib/rate-limit'
 
 interface SignupBody {
   email?: string
@@ -8,6 +9,10 @@ interface SignupBody {
 }
 
 export async function POST(request: NextRequest) {
+  const ip = getClientIp(request)
+  const rl = checkLimit(`auth:${ip}`, LIMITS.auth.count, LIMITS.auth.windowMs)
+  if (!rl.ok) return tooManyRequests(rl, 'Too many attempts. Please wait a minute and try again.')
+
   try {
     const { email, password }: SignupBody = await request.json()
     if (!email || !password) {

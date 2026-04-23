@@ -1,9 +1,37 @@
 'use client'
-import { useState } from 'react'
-import { createClient } from '@/lib/supabase/client'
+import { useState, type ReactElement, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
+import type { Profile, SavedIdea } from '@prisma/client'
 
-// ── Icons (inline SVG to avoid import issues) ──────────────────────────────
+type ProfileWithEmail = Profile & { email: string }
+
+interface Idea {
+  title: string
+  hook?: string | null
+  format?: string | null
+  angle?: string | null
+  source?: string | null
+  tags?: string[]
+}
+
+interface CreatorBreakdown {
+  name: string
+  topics?: string[]
+  style?: string
+  summary?: string
+}
+
+interface AnalyzeResults {
+  profiles?: CreatorBreakdown[]
+  content_ideas?: Idea[]
+}
+
+interface ResearchResults {
+  trend_summary?: string
+  key_angles?: string[]
+  content_ideas?: Idea[]
+}
+
 const Icon = {
   Creator: () => (
     <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
@@ -55,12 +83,11 @@ const Icon = {
   ),
 }
 
-// ── Helpers ─────────────────────────────────────────────────────────────────
 function Spinner() {
   return <div className="spinner" />
 }
 
-function Pill({ children, color = 'default' }) {
+function Pill({ children, color = 'default' }: { children: ReactNode; color?: 'default' | 'accent' }) {
   const cls = color === 'accent'
     ? 'bg-accent/10 border-accent/30 text-accent'
     : 'bg-white/5 border-border text-muted'
@@ -71,33 +98,40 @@ function Pill({ children, color = 'default' }) {
   )
 }
 
-// ── Main dashboard ───────────────────────────────────────────────────────────
-export default function DashboardClient({ profile, initialSavedIdeas }) {
-  const [tab, setTab]             = useState('creator')
-  const [savedIdeas, setSavedIdeas] = useState(initialSavedIdeas)
-  const supabase = createClient()
-  const router   = useRouter()
+type TabId = 'creator' | 'research' | 'saved' | 'profile'
 
-  async function saveIdea(idea) {
-    const { data: { user } } = await supabase.auth.getUser()
-    const { data, error } = await supabase.from('saved_ideas').insert({
-      user_id: user.id,
-      ...idea,
-    }).select().single()
-    if (!error) setSavedIdeas(prev => [data, ...prev])
+interface DashboardClientProps {
+  profile: ProfileWithEmail
+  initialSavedIdeas: SavedIdea[]
+}
+
+export default function DashboardClient({ profile, initialSavedIdeas }: DashboardClientProps) {
+  const [tab, setTab]             = useState<TabId>('creator')
+  const [savedIdeas, setSavedIdeas] = useState<SavedIdea[]>(initialSavedIdeas)
+
+  async function saveIdea(idea: Idea) {
+    const res = await fetch('/api/ideas', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(idea),
+    })
+    if (res.ok) {
+      const { idea: saved } = (await res.json()) as { idea: SavedIdea }
+      setSavedIdeas(prev => [saved, ...prev])
+    }
   }
 
-  async function deleteIdea(id) {
-    await supabase.from('saved_ideas').delete().eq('id', id)
-    setSavedIdeas(prev => prev.filter(i => i.id !== id))
+  async function deleteIdea(id: string) {
+    const res = await fetch(`/api/ideas/${id}`, { method: 'DELETE' })
+    if (res.ok) setSavedIdeas(prev => prev.filter(i => i.id !== id))
   }
 
   async function signOut() {
-    await supabase.auth.signOut()
-    router.push('/')
+    await fetch('/api/auth/signout', { method: 'POST' })
+    window.location.assign('/')
   }
 
-  const TABS = [
+  const TABS: { id: TabId; label: string; Icon: () => ReactElement }[] = [
     { id: 'creator',  label: 'Creator Analysis', Icon: Icon.Creator },
     { id: 'research', label: 'Topic Research',   Icon: Icon.Research },
     { id: 'saved',    label: `Saved Ideas (${savedIdeas.length})`, Icon: Icon.Saved },
@@ -106,7 +140,6 @@ export default function DashboardClient({ profile, initialSavedIdeas }) {
 
   return (
     <div className="min-h-screen bg-bg flex">
-      {/* Sidebar */}
       <aside className="hidden md:flex flex-col w-60 border-r border-border bg-card flex-shrink-0">
         <div className="p-5 border-b border-border">
           <div className="text-accent font-mono text-sm tracking-widest mb-0.5">ContentIQ</div>
@@ -144,7 +177,6 @@ export default function DashboardClient({ profile, initialSavedIdeas }) {
         </div>
       </aside>
 
-      {/* Mobile top bar */}
       <div className="md:hidden fixed top-0 left-0 right-0 z-10 bg-card border-b border-border flex items-center justify-between px-4 py-3">
         <span className="text-accent font-mono text-sm tracking-widest">ContentIQ</span>
         <div className="flex gap-1">
@@ -160,7 +192,6 @@ export default function DashboardClient({ profile, initialSavedIdeas }) {
         </div>
       </div>
 
-      {/* Main content */}
       <main className="flex-1 overflow-y-auto md:pt-0 pt-14">
         <div className="max-w-3xl mx-auto p-6 lg:p-10">
           {tab === 'creator'  && <CreatorTab  profile={profile} onSave={saveIdea} />}
@@ -173,15 +204,14 @@ export default function DashboardClient({ profile, initialSavedIdeas }) {
   )
 }
 
-// ── Creator Analysis Tab ─────────────────────────────────────────────────────
-function CreatorTab({ profile, onSave }) {
+function CreatorTab({ profile, onSave }: { profile: ProfileWithEmail; onSave: (idea: Idea) => Promise<void> }) {
   const [input, setInput]       = useState('')
-  const [profiles, setProfiles] = useState(profile.favourite_creators || [])
+  const [profiles, setProfiles] = useState<string[]>(profile.favouriteCreators ?? [])
   const [loading, setLoading]   = useState(false)
   const [status, setStatus]     = useState('')
-  const [results, setResults]   = useState(null)
+  const [results, setResults]   = useState<AnalyzeResults | null>(null)
   const [error, setError]       = useState('')
-  const [saved, setSaved]       = useState(new Set())
+  const [saved, setSaved]       = useState<Set<string>>(new Set())
 
   function addProfile() {
     const v = input.trim()
@@ -196,19 +226,19 @@ function CreatorTab({ profile, onSave }) {
       const res = await fetch('/api/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ profiles, userProfile: profile }),
+        body: JSON.stringify({ profiles }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'API error')
       setResults(data)
       setStatus('')
     } catch (e) {
-      setError(e.message)
+      setError(e instanceof Error ? e.message : 'Request failed')
     }
     setLoading(false)
   }
 
-  async function handleSave(idea) {
+  async function handleSave(idea: Idea) {
     await onSave({ ...idea, source: 'creator_analysis' })
     setSaved(s => new Set([...s, idea.title]))
   }
@@ -220,7 +250,6 @@ function CreatorTab({ profile, onSave }) {
         <p className="text-muted text-sm">Add LinkedIn creators to analyze their content strategy and get personalized topic ideas.</p>
       </div>
 
-      {/* Input */}
       <div className="bg-card border border-border rounded-xl p-6 mb-6">
         <label className="block text-xs uppercase tracking-widest text-muted mb-2 font-mono">Add Profiles to Analyze</label>
         <div className="flex gap-2 mb-3">
@@ -253,7 +282,6 @@ function CreatorTab({ profile, onSave }) {
         </button>
       </div>
 
-      {/* Status */}
       {loading && (
         <div className="flex items-center gap-3 text-muted text-sm p-4 bg-card border border-border rounded-xl mb-6">
           <Spinner /> {status}
@@ -262,7 +290,6 @@ function CreatorTab({ profile, onSave }) {
 
       {error && <div className="bg-red-500/10 border border-red-500/20 text-red-400 text-sm rounded-xl p-4 mb-6">{error}</div>}
 
-      {/* Results */}
       {results && (
         <>
           <h2 className="font-display text-xl font-bold text-ink mb-4 mt-8">
@@ -301,14 +328,13 @@ function CreatorTab({ profile, onSave }) {
   )
 }
 
-// ── Topic Research Tab ───────────────────────────────────────────────────────
-function ResearchTab({ profile, onSave }) {
+function ResearchTab({ profile: _profile, onSave }: { profile: ProfileWithEmail; onSave: (idea: Idea) => Promise<void> }) {
   const [query, setQuery]     = useState('')
   const [loading, setLoading] = useState(false)
   const [status, setStatus]   = useState('')
-  const [results, setResults] = useState(null)
+  const [results, setResults] = useState<ResearchResults | null>(null)
   const [error, setError]     = useState('')
-  const [saved, setSaved]     = useState(new Set())
+  const [saved, setSaved]     = useState<Set<string>>(new Set())
 
   async function research() {
     if (!query.trim()) return
@@ -318,19 +344,19 @@ function ResearchTab({ profile, onSave }) {
       const res = await fetch('/api/research', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query, userProfile: profile }),
+        body: JSON.stringify({ query }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'API error')
       setResults(data)
       setStatus('')
     } catch (e) {
-      setError(e.message)
+      setError(e instanceof Error ? e.message : 'Request failed')
     }
     setLoading(false)
   }
 
-  async function handleSave(idea) {
+  async function handleSave(idea: Idea) {
     await onSave({ ...idea, source: 'research' })
     setSaved(s => new Set([...s, idea.title]))
   }
@@ -372,9 +398,9 @@ function ResearchTab({ profile, onSave }) {
         <>
           {results.trend_summary && (
             <div className="bg-card border border-border rounded-xl p-6 mb-6">
-              <div className="text-xs uppercase tracking-widest text-muted font-mono mb-3">What's Trending Right Now</div>
+              <div className="text-xs uppercase tracking-widest text-muted font-mono mb-3">What&apos;s Trending Right Now</div>
               <p className="text-ink text-sm leading-relaxed">{results.trend_summary}</p>
-              {results.key_angles?.length > 0 && (
+              {results.key_angles && results.key_angles.length > 0 && (
                 <div className="mt-4 flex flex-wrap gap-2">
                   {results.key_angles.map((a, i) => <Pill key={i}>{a}</Pill>)}
                 </div>
@@ -401,8 +427,7 @@ function ResearchTab({ profile, onSave }) {
   )
 }
 
-// ── Saved Ideas Tab ──────────────────────────────────────────────────────────
-function SavedTab({ ideas, onDelete }) {
+function SavedTab({ ideas, onDelete }: { ideas: SavedIdea[]; onDelete: (id: string) => Promise<void> }) {
   if (!ideas.length) {
     return (
       <div className="animate-fade-up text-center py-20">
@@ -413,14 +438,14 @@ function SavedTab({ ideas, onDelete }) {
     )
   }
 
-  const bySource = ideas.reduce((acc, idea) => {
+  const bySource: Record<string, SavedIdea[]> = ideas.reduce<Record<string, SavedIdea[]>>((acc, idea) => {
     const key = idea.source || 'other'
     if (!acc[key]) acc[key] = []
     acc[key].push(idea)
     return acc
   }, {})
 
-  const labels = {
+  const labels: Record<string, string> = {
     creator_analysis: 'From Creator Analysis',
     research: 'From Topic Research',
     other: 'Saved Ideas',
@@ -442,7 +467,7 @@ function SavedTab({ ideas, onDelete }) {
                 <div className="flex-1">
                   <div className="text-ink text-sm font-medium mb-2">{idea.title}</div>
                   {idea.hook && (
-                    <div className="text-muted text-xs italic mb-2">"{idea.hook}"</div>
+                    <div className="text-muted text-xs italic mb-2">&quot;{idea.hook}&quot;</div>
                   )}
                   {idea.angle && (
                     <div className="text-muted text-xs leading-relaxed">{idea.angle}</div>
@@ -466,18 +491,17 @@ function SavedTab({ ideas, onDelete }) {
   )
 }
 
-// ── Profile Tab ──────────────────────────────────────────────────────────────
-function ProfileTab({ profile }) {
+function ProfileTab({ profile }: { profile: ProfileWithEmail }) {
   const router = useRouter()
-  const fields = [
+  const fields: { label: string; value: string | null | undefined }[] = [
     { label: 'Name',               value: profile.name },
     { label: 'Role',               value: profile.role },
     { label: 'Industry',           value: profile.industry },
     { label: 'Tone',               value: profile.tone },
-    { label: 'Content Formats',    value: profile.content_formats?.join(', ') },
+    { label: 'Content Formats',    value: profile.contentFormats?.join(', ') },
     { label: 'Positioning',        value: profile.positioning },
-    { label: 'Target Audience',    value: profile.target_audience },
-    { label: 'Favourite Creators', value: profile.favourite_creators?.join(', ') },
+    { label: 'Target Audience',    value: profile.targetAudience },
+    { label: 'Favourite Creators', value: profile.favouriteCreators?.join(', ') },
   ]
 
   return (
@@ -504,11 +528,11 @@ function ProfileTab({ profile }) {
         ) : null)}
       </div>
 
-      {profile.past_content && (
+      {profile.pastContent && (
         <div className="mt-6 bg-card border border-border rounded-xl p-6">
           <div className="text-xs uppercase tracking-widest text-muted font-mono mb-3">Past Content Sample</div>
           <div className="text-muted text-xs leading-relaxed whitespace-pre-wrap max-h-40 overflow-y-auto">
-            {profile.past_content.slice(0, 800)}{profile.past_content.length > 800 ? '…' : ''}
+            {profile.pastContent.slice(0, 800)}{profile.pastContent.length > 800 ? '…' : ''}
           </div>
         </div>
       )}
@@ -516,8 +540,7 @@ function ProfileTab({ profile }) {
   )
 }
 
-// ── Reusable Idea Card ────────────────────────────────────────────────────────
-function IdeaCard({ idea, index, isSaved, onSave }) {
+function IdeaCard({ idea, index, isSaved, onSave }: { idea: Idea; index: number; isSaved: boolean; onSave: () => void }) {
   return (
     <div
       className="bg-card border border-border hover:border-accent/30 rounded-xl p-5 mb-3 transition-colors animate-fade-up group"
@@ -531,7 +554,7 @@ function IdeaCard({ idea, index, isSaved, onSave }) {
           <div className="text-ink text-sm font-medium mb-2">{idea.title}</div>
           {idea.hook && (
             <div className="text-muted text-xs italic mb-2">
-              <span className="text-accent/60 not-italic">Hook: </span>"{idea.hook}"
+              <span className="text-accent/60 not-italic">Hook: </span>&quot;{idea.hook}&quot;
             </div>
           )}
           {idea.angle && (

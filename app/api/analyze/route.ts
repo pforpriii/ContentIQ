@@ -1,9 +1,12 @@
 import Anthropic from '@anthropic-ai/sdk'
-import { NextResponse } from 'next/server'
+import { NextResponse, type NextRequest } from 'next/server'
+import { prisma } from '@/lib/db'
+import { getSession } from '@/lib/auth'
+import type { Profile } from '@prisma/client'
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
-function buildUserContext(p) {
+function buildUserContext(p: Profile | null): string {
   if (!p) return ''
   return `
 ABOUT THE USER (use this to personalize content ideas):
@@ -11,23 +14,31 @@ ABOUT THE USER (use this to personalize content ideas):
 - Role: ${p.role || 'N/A'}
 - Industry: ${p.industry || 'N/A'}
 - Positioning: ${p.positioning || 'N/A'}
-- Unique angle/POV: ${p.unique_angle || 'N/A'}
-- Target audience: ${p.target_audience || 'N/A'}
-- Audience pain points: ${p.audience_pain_points || 'N/A'}
+- Unique angle/POV: ${p.uniqueAngle || 'N/A'}
+- Target audience: ${p.targetAudience || 'N/A'}
+- Audience pain points: ${p.audiencePainPoints || 'N/A'}
 - Tone/voice: ${p.tone || 'N/A'}
-- Preferred formats: ${p.content_formats?.join(', ') || 'N/A'}
-- Past content sample: ${p.past_content ? p.past_content.slice(0, 500) + '...' : 'N/A'}
+- Preferred formats: ${p.contentFormats?.join(', ') || 'N/A'}
+- Past content sample: ${p.pastContent ? p.pastContent.slice(0, 500) + '...' : 'N/A'}
 `.trim()
 }
 
-export async function POST(request) {
+interface AnalyzeBody {
+  profiles?: string[]
+}
+
+export async function POST(request: NextRequest) {
+  const session = await getSession()
+  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
   try {
-    const { profiles, userProfile } = await request.json()
+    const { profiles }: AnalyzeBody = await request.json()
 
     if (!profiles?.length) {
       return NextResponse.json({ error: 'No profiles provided' }, { status: 400 })
     }
 
+    const userProfile = await prisma.profile.findUnique({ where: { userId: session.sub } })
     const userCtx = buildUserContext(userProfile)
     const profileList = profiles.map((p, i) => `${i + 1}. ${p}`).join('\n')
 
@@ -68,31 +79,17 @@ Respond ONLY in valid JSON (no markdown, no preamble):
   ]
 }`
 
-    // First call with web search enabled
-    let response = await client.messages.create({
+    const response = await client.messages.create({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 4000,
       tools: [{ type: 'web_search_20250305', name: 'web_search' }],
       messages: [{ role: 'user', content: prompt }],
     })
 
-    // If model used tools, continue until we get final text
-    const messages = [{ role: 'user', content: prompt }]
-    while (response.stop_reason === 'tool_use') {
-      messages.push({ role: 'assistant', content: response.content })
-      const toolResults = response.content
-        .filter(b => b.type === 'tool_use')
-        .map(b => ({ type: 'tool_result', tool_use_id: b.id, content: 'Search completed' }))
-      messages.push({ role: 'user', content: toolResults })
-      response = await client.messages.create({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 4000,
-        tools: [{ type: 'web_search_20250305', name: 'web_search' }],
-        messages,
-      })
-    }
-
-    const rawText = response.content.filter(b => b.type === 'text').map(b => b.text).join('')
+    const rawText = response.content
+      .filter((b): b is Extract<typeof b, { type: 'text' }> => b.type === 'text')
+      .map(b => b.text)
+      .join('')
     const clean   = rawText.replace(/```json|```/g, '').trim()
     const start   = clean.indexOf('{')
     const end     = clean.lastIndexOf('}')
@@ -101,6 +98,7 @@ Respond ONLY in valid JSON (no markdown, no preamble):
     return NextResponse.json(parsed)
   } catch (err) {
     console.error('Analyze error:', err)
-    return NextResponse.json({ error: err.message }, { status: 500 })
+    const message = err instanceof Error ? err.message : 'Analyze failed'
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }

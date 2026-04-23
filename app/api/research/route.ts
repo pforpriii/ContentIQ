@@ -2,6 +2,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { NextResponse, type NextRequest } from 'next/server'
 import { prisma } from '@/lib/db'
 import { getSession } from '@/lib/auth'
+import { checkLimit, tooManyRequests, LIMITS } from '@/lib/rate-limit'
 import type { Profile } from '@prisma/client'
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
@@ -28,6 +29,9 @@ interface ResearchBody {
 export async function POST(request: NextRequest) {
   const session = await getSession()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const rl = checkLimit(`ai:${session.sub}`, LIMITS.ai.count, LIMITS.ai.windowMs)
+  if (!rl.ok) return tooManyRequests(rl, 'AI rate limit reached. Try again in an hour.')
 
   try {
     const { query }: ResearchBody = await request.json()

@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { prisma } from '@/lib/db'
 import { getSession } from '@/lib/auth'
+import { checkLimit, tooManyRequests, LIMITS } from '@/lib/rate-limit'
 
 interface IdeaBody {
   title?: string
@@ -14,6 +15,9 @@ interface IdeaBody {
 export async function POST(request: NextRequest) {
   const session = await getSession()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const rl = checkLimit(`write:${session.sub}`, LIMITS.write.count, LIMITS.write.windowMs)
+  if (!rl.ok) return tooManyRequests(rl)
 
   try {
     const { title, hook, format, angle, source, tags }: IdeaBody = await request.json()
